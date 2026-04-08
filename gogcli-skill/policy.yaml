@@ -58,15 +58,15 @@ network_policies:
           # - allow: { method: PUT, path: "/**" }
           # - allow: { method: PATCH, path: "/**" }
           # - allow: { method: DELETE, path: "/**" }
-      # Drive file upload uses a separate upload endpoint
-      - host: www.googleapis.com
-        port: 443
-        protocol: rest
-        enforcement: enforce
-        tls: terminate
-        rules:
-          # - allow: { method: GET, path: "/upload/**" }
-          # - allow: { method: POST, path: "/upload/**" }
-          # - allow: { method: PUT, path: "/upload/**" }
+      # Drive file upload uses a separate endpoint (www.googleapis.com).
+      # Uncomment the block below to enable uploads:
+      # - host: www.googleapis.com
+      #   port: 443
+      #   protocol: rest
+      #   enforcement: enforce
+      #   tls: terminate
+      #   rules:
+      #     - allow: { method: POST, path: "/upload/**" }
+      #     - allow: { method: PUT, path: "/upload/**" }
     binaries:
       - { path: /sandbox/.config/gogcli/gog-bin }

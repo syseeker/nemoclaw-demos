@@ -66,5 +66,5 @@ gog -j drive ls -a you@gmail.com
 - The account configured in this sandbox is `you@gmail.com`.
 - Gmail access is read-only in the current GCP project (searching and reading work; sending requires the Gmail send scope to be enabled).
 - Run `gog --help` or `gog <command> --help` for the full flag reference.
-- All Google API calls go through the NemoClaw egress policy — the first call to each service will trigger an approval prompt in the TUI.
+- All Google API calls go through the NemoClaw egress policy applied by bootstrap.sh — only the Google API domains in policy.yaml are reachable.
 - If `gog` reports "could not reach token server", the host-side `gog-token-server.py` is not running. Ask the user to restart it.

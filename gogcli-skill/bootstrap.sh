@@ -18,8 +18,12 @@
 #   --sandbox       OpenShell sandbox name to push gogcli into.
 #
 # Optional:
-#   --gog           Path to the gog binary (auto-detected if omitted).
+#   --gog           Path to a pre-built gog binary (skips clone/build).
+#   --gogcli-repo   Path to an existing gogcli checkout (default: auto-detected
+#                   as a sibling dir; cloned from GitHub if not found).
 #   --port          Token server port (default: 9100).
+#
+# The script automatically installs Go and clones/builds gogcli if needed.
 #
 # Environment:
 #   GOG_KEYRING_PASSWORD   Encrypts the local token file. Required.
@@ -28,12 +32,13 @@ set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Parse flags ───────────────────────────────────────────────────────────────
+# -- Parse flags ---------------------------------------------------------------
 
 CREDS_FILE=""
 EMAIL=""
 SANDBOX=""
 GOG_BIN_OVERRIDE=""
+GOGCLI_REPO_OVERRIDE=""
 TOKEN_PORT="${GOG_TOKEN_SERVER_PORT:-9100}"
 
 usage() {
@@ -43,7 +48,8 @@ usage() {
   echo "  --credentials  GCP Console OAuth client secret JSON"
   echo "  --email        Gmail address"
   echo "  --sandbox      OpenShell sandbox name"
-  echo "  --gog          Path to gog binary (auto-detected if omitted)"
+  echo "  --gog          Path to a pre-built gog binary (skips clone/build)"
+  echo "  --gogcli-repo  Path to an existing gogcli checkout (auto-detected/cloned if omitted)"
   echo "  --port         Token server port (default: 9100)"
   exit 1
 }
@@ -53,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --credentials) CREDS_FILE="$2"; shift 2 ;;
     --email)       EMAIL="$2";      shift 2 ;;
     --sandbox)     SANDBOX="$2";    shift 2 ;;
+    --gogcli-repo) GOGCLI_REPO_OVERRIDE="$2"; shift 2 ;;
     --gog)         GOG_BIN_OVERRIDE="$2"; shift 2 ;;
     --port)        TOKEN_PORT="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; usage ;;
@@ -74,26 +81,110 @@ if [[ -z "${GOG_KEYRING_PASSWORD:-}" ]]; then
   exit 1
 fi
 
-# ── Locate gog binary ─────────────────────────────────────────────────────────
+# -- Pre-flight checks --------------------------------------------------------
 
-GOG_BIN="$GOG_BIN_OVERRIDE"
-if [[ -z "$GOG_BIN" ]]; then
-  for candidate in \
-    "$(command -v gog 2>/dev/null || true)" \
-    "$HOME/demo/gogcli/bin/gog" \
-    "$HOME/gogcli/bin/gog" \
-    "$(dirname "$(dirname "$SKILL_DIR")")/gogcli/bin/gog"; do
-    if [[ -x "$candidate" ]]; then
-      GOG_BIN="$candidate"
-      break
-    fi
-  done
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+
+case "$OS" in
+  Linux)  ;;
+  Darwin) ;;
+  *)
+    echo "Error: unsupported OS '$OS'. Only Linux and macOS are supported."
+    exit 1
+    ;;
+esac
+
+for cmd in git python3 curl make; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo "Error: required command '$cmd' not found."
+    exit 1
+  fi
+done
+
+GO_MIN_MAJOR=1
+GO_MIN_MINOR=21
+GO_INSTALL_VERSION="1.23.8"
+
+go_version_ok() {
+  local ver
+  ver="$(go version 2>/dev/null | sed -E 's/.*go([0-9]+\.[0-9]+).*/\1/')" || return 1
+  local major="${ver%%.*}" minor="${ver#*.}"
+  (( major > GO_MIN_MAJOR || (major == GO_MIN_MAJOR && minor >= GO_MIN_MINOR) ))
+}
+
+install_go() {
+  local go_os go_arch
+  case "$OS" in
+    Linux)  go_os="linux"  ;;
+    Darwin) go_os="darwin" ;;
+  esac
+  case "$ARCH" in
+    x86_64)  go_arch="amd64" ;;
+    aarch64) go_arch="arm64" ;;
+    arm64)   go_arch="arm64" ;;
+    *)
+      echo "Error: unsupported architecture '$ARCH' for Go install."
+      exit 1
+      ;;
+  esac
+
+  local tarball="go${GO_INSTALL_VERSION}.${go_os}-${go_arch}.tar.gz"
+  local url="https://go.dev/dl/${tarball}"
+  local install_dir="$HOME/.local/go"
+
+  echo "Installing Go ${GO_INSTALL_VERSION} to ${install_dir} ..."
+  mkdir -p "$HOME/.local"
+  rm -rf "$install_dir"
+  curl -fsSL "$url" | tar -C "$HOME/.local" -xz
+
+  export PATH="$install_dir/bin:$PATH"
+
+  if ! go version &>/dev/null; then
+    echo "Error: Go installation failed."
+    exit 1
+  fi
+  echo "Installed $(go version)"
+}
+
+if [[ -z "$GOG_BIN_OVERRIDE" ]]; then
+  if ! command -v go &>/dev/null; then
+    echo "Go toolchain not found — installing automatically..."
+    install_go
+  elif ! go_version_ok; then
+    echo "Go $(go version | sed -E 's/.*go([0-9]+\.[0-9]+[^ ]*).*/\1/') is too old (need ${GO_MIN_MAJOR}.${GO_MIN_MINOR}+) — upgrading..."
+    install_go
+  fi
 fi
 
-if [[ -z "$GOG_BIN" ]]; then
-  echo "Error: gog binary not found. Build it first:"
-  echo "  cd ~/demo/gogcli && make"
-  echo "Or pass --gog /path/to/bin/gog"
+echo "OS: $OS ($ARCH)"
+
+# -- Locate (and optionally build) the gog binary -----------------------------
+
+GOGCLI_REPO_URL="https://github.com/NVIDIA/gogcli.git"
+GOGCLI_REPO="${GOGCLI_REPO_OVERRIDE:-$(dirname "$(dirname "$SKILL_DIR")")/gogcli}"
+
+if [[ -n "$GOG_BIN_OVERRIDE" ]]; then
+  GOG_BIN="$GOG_BIN_OVERRIDE"
+elif GOG_BIN="$(command -v gog 2>/dev/null)" && [[ -x "$GOG_BIN" ]]; then
+  : # found on PATH
+elif GOG_BIN="$GOGCLI_REPO/bin/gog" && [[ -x "$GOG_BIN" ]]; then
+  : # already built in repo
+else
+  if [[ ! -d "$GOGCLI_REPO" ]]; then
+    echo "Cloning gogcli to $GOGCLI_REPO ..."
+    git clone "$GOGCLI_REPO_URL" "$GOGCLI_REPO"
+  fi
+
+  echo "Building gog from $GOGCLI_REPO ..."
+  make -C "$GOGCLI_REPO"
+fi
+
+if [[ ! -x "$GOG_BIN" ]]; then
+  echo "Error: failed to obtain a working gog binary."
+  echo ""
+  echo "Pass a pre-built binary to skip the automatic build:"
+  echo "  $0 --gog /path/to/bin/gog ..."
   exit 1
 fi
 
@@ -109,12 +200,12 @@ GOG_ENV=(
   GOG_KEYRING_PASSWORD="$GOG_KEYRING_PASSWORD"
 )
 
-# ── Store OAuth client credentials ────────────────────────────────────────────
+# -- Store OAuth client credentials --------------------------------------------
 
 echo "Storing OAuth client credentials..."
 "${GOG_ENV[@]}" "$GOG_BIN" auth credentials set "$CREDS_FILE"
 
-# ── Authorise account (OAuth consent flow) ────────────────────────────────────
+# -- Authorise account (OAuth consent flow) ------------------------------------
 
 echo ""
 echo "Authorising $EMAIL — a browser window will open. Sign in and grant access."
@@ -123,12 +214,12 @@ echo ""
   --services gmail,calendar,drive \
   --manual
 
-# ── Verify keyring ────────────────────────────────────────────────────────────
+# -- Verify keyring ------------------------------------------------------------
 
 echo "Verifying keyring..."
 "${GOG_ENV[@]}" "$GOG_BIN" auth list
 
-# ── Start (or restart) token server ──────────────────────────────────────────
+# -- Start (or restart) token server ------------------------------------------
 
 TOKEN_SERVER_PID_FILE="$GOG_CONFIG_DIR/token-server.pid"
 
@@ -162,7 +253,7 @@ if (( retries < 0 )); then
   echo "Warning: token server did not respond within 10s; check $GOG_CONFIG_DIR/token-server.log"
 fi
 
-# ── Push gogcli into sandbox ──────────────────────────────────────────────────
+# -- Push gogcli into sandbox --------------------------------------------------
 
 HOST_IP="$(hostname -I | awk '{print $1}')"
 if [[ -z "$HOST_IP" ]]; then
@@ -196,7 +287,7 @@ chmod +x "$UPLOAD_DIR/gog"
 echo "Uploading gogcli config + wrapper into sandbox '$SANDBOX'..."
 openshell sandbox upload "$SANDBOX" "$UPLOAD_DIR" /sandbox/.config/gogcli
 
-# ── Apply network policy ──────────────────────────────────────────────────────
+# -- Apply network policy ------------------------------------------------------
 
 echo "Applying network policy..."
 
@@ -237,14 +328,14 @@ printf '%s\n' "$TOKEN_SERVER_BLOCK" >> "$POLICY_FILE"
 openshell policy set --policy "$POLICY_FILE" --wait "$SANDBOX"
 rm -f "$POLICY_FILE"
 
-# ── Upload SKILL.md ───────────────────────────────────────────────────────────
+# -- Upload SKILL.md -----------------------------------------------------------
 
 echo "Uploading SKILL.md..."
 openshell sandbox upload "$SANDBOX" \
   "$SKILL_DIR/SKILL.md" \
   /sandbox/.openclaw/skills/gogcli/
 
-# ── Restart OpenClaw gateway ──────────────────────────────────────────────────
+# -- Restart OpenClaw gateway --------------------------------------------------
 
 echo "Restarting OpenClaw gateway..."
 openclaw gateway stop 2>/dev/null || true
@@ -255,7 +346,7 @@ nohup openclaw gateway run \
   --token hello \
   > /tmp/gateway.log 2>&1 &
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# -- Done ----------------------------------------------------------------------
 
 echo ""
 echo "gogcli ready in sandbox '$SANDBOX'."

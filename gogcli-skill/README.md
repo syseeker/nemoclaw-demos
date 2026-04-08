@@ -14,7 +14,7 @@ sandbox (gog wrapper) ──GET /token──> host token server ──OAuth2─�
 
 | File | Purpose |
 |---|---|
-| `bootstrap.sh` | First-time setup: store credentials, run OAuth consent flow, start token server, push gogcli into sandbox, apply network policy |
+| `bootstrap.sh` | One-command setup: installs Go (if needed), clones and builds `gogcli`, stores credentials, runs OAuth consent, starts token server, pushes gogcli into sandbox, applies network policy, uploads skill, restarts gateway |
 | `setup.sh` | Re-deploy only: restart token server + re-upload sandbox config (skips OAuth consent) |
 | `gog-token-server.py` | Host-side HTTP server — serves `GET /token` (fresh access token) and `GET /health` |
 | `policy.yaml` | NemoClaw network policy — restricts sandbox egress to Google APIs (read-only) |
@@ -28,28 +28,26 @@ sandbox (gog wrapper) ──GET /token──> host token server ──OAuth2─�
 export GOG_KEYRING_PASSWORD=<choose-a-password>
 
 ./gogcli-skill/bootstrap.sh \
-  --credentials ~/Downloads/client_secret.json \
+  --credentials /path/to/client_secret.json \
   --email you@gmail.com \
-  --sandbox email
+  --sandbox <sandbox-name>
 ```
 
-This will open a browser for the OAuth consent flow. After granting access, the token server starts and gogcli is pushed into the sandbox.
+Bootstrap handles everything automatically: it checks your OS, installs Go if needed, clones and builds the `gogcli` repo (as a sibling directory), runs the OAuth consent flow, starts the token server, pushes gogcli into the sandbox, applies the network policy, uploads the skill, and restarts the gateway.
 
 ### 2. Re-deploy (after a reboot or sandbox reset)
 
 ```bash
 export GOG_KEYRING_PASSWORD=<same-password>
-GOG_KEYRING_PASSWORD=$GOG_KEYRING_PASSWORD ./gogcli-skill/setup.sh email
+GOG_KEYRING_PASSWORD=$GOG_KEYRING_PASSWORD ./gogcli-skill/setup.sh <sandbox-name>
 ```
 
 ### 3. Verify
 
 ```bash
-# Check the token server is running
 curl -sf http://localhost:9100/health
 
-# Connect to the sandbox and test
-openshell sandbox connect email
+openshell sandbox connect <sandbox-name>
 /sandbox/.config/gogcli/gog gmail list -a you@gmail.com
 ```
 
@@ -62,15 +60,14 @@ All three Google services are currently **read-only** (GET only). Write methods 
 | Gmail | `gmail.googleapis.com` | GET |
 | Calendar | `calendar.googleapis.com` | GET |
 | Drive | `drive.googleapis.com` | GET |
-| Drive downloads | `www.googleapis.com` | GET |
 | Token server | `<host-ip>:9100` | GET `/token`, GET `/health` |
 
 ## Prerequisites
 
-- `gog` binary built from the [gogcli](../../../gogcli) repo (`cd ~/demo/gogcli && make`)
+- Linux or macOS
 - GCP OAuth client credentials JSON (see below)
 - `openshell` and `openclaw` CLIs available on the host
-- Python 3 (for the token server)
+- `git`, `python3`, `curl`, `make` (Go and `gogcli` are installed/built automatically)
 
 ### Getting the GCP OAuth credentials JSON
 
@@ -87,7 +84,7 @@ All three Google services are currently **read-only** (GET only). Write methods 
 4. **Create credentials:** Go to **APIs & Services > Credentials > Create Credentials > OAuth client ID**.
    - Application type: **Desktop app**.
    - Give it a name and click **Create**.
-5. **Download the JSON:** Click the download icon next to the new client ID. Save the file (e.g. `~/Downloads/client_secret.json`) — this is the `--credentials` argument for `bootstrap.sh`.
+5. **Download the JSON:** Click the download icon next to the new client ID. Save the file — this is the `--credentials` argument for `bootstrap.sh`.
 
 ## Environment variables
 

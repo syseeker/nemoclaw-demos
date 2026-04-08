@@ -30,7 +30,7 @@ GOG_BIN_OVERRIDE=${2:-}
 TOKEN_PORT="${GOG_TOKEN_SERVER_PORT:-9100}"
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Locate the gog binary ─────────────────────────────────────────────────────
+# -- Locate the gog binary -----------------------------------------------------
 
 resolve_gog_binary() {
   if [[ -n "$GOG_BIN_OVERRIDE" ]]; then
@@ -39,9 +39,8 @@ resolve_gog_binary() {
   fi
   for candidate in \
     "$(command -v gog 2>/dev/null || true)" \
-    "$HOME/demo/gogcli/bin/gog" \
-    "$HOME/gogcli/bin/gog" \
-    "$(dirname "$(dirname "$SKILL_DIR")")/gogcli/bin/gog"; do
+    "$(dirname "$(dirname "$SKILL_DIR")")/gogcli/bin/gog" \
+    "$HOME/gogcli/bin/gog"; do
     if [[ -x "$candidate" ]]; then
       echo "$candidate"
       return
@@ -55,8 +54,8 @@ GOG_BIN="$(resolve_gog_binary)"
 if [[ -z "$GOG_BIN" ]]; then
   echo "Error: gog binary not found."
   echo ""
-  echo "Build it first:"
-  echo "  cd ~/demo/gogcli && make"
+  echo "Build it first (or re-run bootstrap.sh which builds automatically):"
+  echo "  cd <gogcli-repo> && make"
   echo ""
   echo "Or pass the path explicitly:"
   echo "  $0 $SANDBOX /path/to/bin/gog"
@@ -65,7 +64,7 @@ fi
 
 echo "Using gog binary: $GOG_BIN"
 
-# ── Validate gogcli credentials on the host ───────────────────────────────────
+# -- Validate gogcli credentials on the host -----------------------------------
 
 GOG_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gogcli"
 
@@ -73,7 +72,7 @@ if [[ ! -d "$GOG_CONFIG_DIR" ]]; then
   echo "Error: gogcli config not found at $GOG_CONFIG_DIR"
   echo ""
   echo "Run bootstrap first:"
-  echo "  GOG_KEYRING_PASSWORD=<pw> ./gogcli-skill/bootstrap.sh you@gmail.com"
+  echo "  GOG_KEYRING_PASSWORD=<pw> ./gogcli-skill/bootstrap.sh --credentials <file> --email <addr> --sandbox <name>"
   exit 1
 fi
 
@@ -85,7 +84,7 @@ if [[ -z "${GOG_KEYRING_PASSWORD:-}" ]]; then
   exit 1
 fi
 
-# ── Resolve host account ──────────────────────────────────────────────────────
+# -- Resolve host account ------------------------------------------------------
 
 GOG_ACCOUNT="${GOG_ACCOUNT:-}"
 if [[ -z "$GOG_ACCOUNT" ]]; then
@@ -99,7 +98,7 @@ if [[ -z "$GOG_ACCOUNT" ]]; then
   exit 1
 fi
 
-# ── Determine host IP ─────────────────────────────────────────────────────────
+# -- Determine host IP ---------------------------------------------------------
 
 HOST_IP="$(hostname -I | awk '{print $1}')"
 if [[ -z "$HOST_IP" ]]; then
@@ -108,7 +107,7 @@ if [[ -z "$HOST_IP" ]]; then
 fi
 echo "Host IP: $HOST_IP"
 
-# ── Start (or restart) the token server ──────────────────────────────────────
+# -- Start (or restart) the token server --------------------------------------
 #
 # The token server holds the refresh token on the host and serves fresh access
 # tokens to the sandbox on demand. The sandbox never sees the refresh token.
@@ -150,7 +149,7 @@ start_token_server() {
 
 start_token_server
 
-# ── Build sandbox upload directory ───────────────────────────────────────────
+# -- Build sandbox upload directory -------------------------------------------
 #
 # Upload the gog config (credentials.json, config.json) plus a gog wrapper
 # script that fetches a fresh access token from the host on each call.
@@ -182,7 +181,7 @@ chmod +x "$UPLOAD_DIR/gog"
 echo "Uploading gogcli config + wrapper..."
 openshell sandbox upload "$SANDBOX" "$UPLOAD_DIR" /sandbox/.config/gogcli
 
-# ── Apply gogcli network policy ───────────────────────────────────────────────
+# -- Apply gogcli network policy -----------------------------------------------
 
 echo "Applying gogcli network policy..."
 
@@ -223,7 +222,7 @@ printf '%s\n' "$TOKEN_SERVER_BLOCK" >> "$POLICY_FILE"
 openshell policy set --policy "$POLICY_FILE" --wait "$SANDBOX"
 rm -f "$POLICY_FILE"
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# -- Done ----------------------------------------------------------------------
 
 echo ""
 echo "Done. Token server running on ${HOST_IP}:${TOKEN_PORT} (pid $(cat "$TOKEN_SERVER_PID_FILE" 2>/dev/null || echo '?'))."
