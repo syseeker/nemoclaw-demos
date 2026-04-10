@@ -117,7 +117,15 @@ PLANET_API_KEY=$(python3 -c "import json; print(json.load(open('$CREDS_PATH')).g
 
 # ── Step 3: Detect host IP ───────────────────────────────────────
 echo ""
-HOST_IP="${PLANET_PROXY_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+HOST_IP="${PLANET_PROXY_HOST:-}"
+if [ -z "$HOST_IP" ]; then
+  # Linux
+  HOST_IP=$( (hostname -I 2>/dev/null || true) | awk '{print $1}')
+fi
+if [ -z "$HOST_IP" ]; then
+  # macOS
+  HOST_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)
+fi
 [ -z "$HOST_IP" ] && fail "Could not detect host IP. Set PLANET_PROXY_HOST env var."
 info "Host IP: $HOST_IP (proxy will listen on 0.0.0.0:$TOKEN_PORT)"
 
