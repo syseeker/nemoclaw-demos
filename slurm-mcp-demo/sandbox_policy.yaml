@@ -45,33 +45,9 @@ network_policies:
       - host: host.openshell.internal
         port: 9000
         allowed_ips:
-          - 172.17.0.1
-      - host: host.openshell.internal
-        port: 9001
-        allowed_ips:
-          - 172.17.0.1
-      - host: host.openshell.internal
-        port: 9002
-        allowed_ips:
-          - 172.17.0.1
-      - host: host.openshell.internal
-        port: 9003
-        allowed_ips:
-          - 172.17.0.1
-      - host: host.openshell.internal
-        port: 9004
-        allowed_ips:
-          - 172.17.0.1
+          - 172.17.0.1      
       - host: 127.0.0.1
-        port: 9000
-      - host: 127.0.0.1
-        port: 9001
-      - host: 127.0.0.1
-        port: 9002
-      - host: 127.0.0.1
-        port: 9003
-      - host: 127.0.0.1
-        port: 9004
+        port: 9000      
     binaries:
       - { path: /usr/local/bin/claude }
       - { path: /usr/bin/node }
