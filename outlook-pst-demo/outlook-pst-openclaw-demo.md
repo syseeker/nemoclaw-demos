@@ -50,23 +50,24 @@ The MCP server depends on `Aspose.Email-for-Python-via-NET`, which is not a stan
 
 > **[To install you will need to do →](https://github.com/Zenodia/Aspose.Email-Python-Dotnet/blob/zcharpy/mcp-example/README.md#to-install-you-will-need-to-do)**
 
-Once Aspose.Email is installed, install the remaining MCP server dependencies:
+Once Aspose.Email is installed, create a local virtual environment with `uv` and install the remaining MCP server dependencies into it:
 
 ```bash
-pip install -r outlook-pst-demo/requirements-mcp.txt
+# Create a local venv (one-time)
+uv venv .venv
+
+# Install all host-side dependencies
+uv pip install -r outlook-pst-demo/requirements-mcp.txt
+uv pip install fastmcp langchain-nvidia-ai-endpoints colorama
 ```
+
+> **Don't have `uv`?** Install it with `pip install uv` or follow the [uv docs](https://docs.astral.sh/uv/getting-started/installation/).
 
 `requirements-mcp.txt` installs:
 
 ```
 python-dotenv>=1.0
 Aspose.Email-for-Python-via-NET
-```
-
-The server also needs `fastmcp`, `langchain-nvidia-ai-endpoints`, and `colorama`:
-
-```bash
-pip install fastmcp langchain-nvidia-ai-endpoints colorama
 ```
 
 ---
